@@ -1,16 +1,27 @@
-# React + Vite
+Atlas Físico y Político 3D Interactivo
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Un explorador geográfico avanzado construido con React y WebGL, diseñado para visualizar la Tierra con una precisión matemática y estética moderna. Este proyecto soluciona las distorsiones comunes de los mapas planos (Mercator) permitiendo comparaciones de tamaño real en una esfera 3D.
 
-Currently, two official plugins are available:
+🚀 Características Principales
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Exploración Táctica: Visualización de fronteras políticas con iluminación neón (Naranja para soberanías reconocidas, Fucsia para zonas en disputa).
 
-## React Compiler
+Relieve Topográfico: Exageración de sombras y elevaciones para identificar cordilleras como los Andes o el Himalaya de forma clara.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Hidrografía: Capas vectoriales de alta resolución (50m) para los principales ríos y lagos del mundo.
 
-## Expanding the ESLint configuration
+Regla Geométrica: Herramienta para medir la distancia real en kilómetros entre cualquier par de puntos sobre la esfera.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Comparación Territorial: Extracción de la silueta real de un país para desplazarla sobre otros y comparar dimensiones reales sin distorsión esférica.
+
+🛠️ Tecnologías Utilizadas
+
+Frontend: React.js + Vite.
+
+Estilos: Tailwind CSS (Diseño responsivo y efectos neón).
+
+Motor 3D: Three.js (v0.146.0).
+
+Visualización Esférica: Globe.gl.
+
+Datos Geográficos: Natural Earth Data (GeoJSON).
