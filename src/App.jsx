@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Globe2, Ruler, Mountain, Info, Crosshair, MapPin, Eraser, Loader2, AlertTriangle, Droplets, Copy } from 'lucide-react';
+import { 
+  Globe2, Ruler, Mountain, Info, Crosshair, MapPin, 
+  Eraser, Loader2, AlertTriangle, Droplets, Copy,
+  PlusCircle, Building2, Star, Trash2, X
+} from 'lucide-react';
 
 // === SISTEMA GLOBAL DE CACHÉ DE SCRIPTS ===
 const SCRIPT_CACHE = {};
@@ -63,7 +67,6 @@ const getDistanceAndBearing = (lat1, lon1, lat2, lon2) => {
   const dPhi = toRad(lat2 - lat1), dLambda = toRad(lon2 - lon1);
   const a = Math.sin(dPhi/2)**2 + Math.cos(phi1)*Math.cos(phi2)*Math.sin(dLambda/2)**2;
   const dist = R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
-
   const y = Math.sin(dLambda) * Math.cos(phi2);
   const x = Math.cos(phi1)*Math.sin(phi2) - Math.sin(phi1)*Math.cos(phi2)*Math.cos(dLambda);
   const brng = toDeg(Math.atan2(y, x));
@@ -76,11 +79,9 @@ const getDestination = (lat1, lon1, dist, brng) => {
   const lambda1 = toRad(lon1);
   const theta = toRad(brng);
   const delta = dist / R;
-
   let arg = Math.sin(phi1)*Math.cos(delta) + Math.cos(phi1)*Math.sin(delta)*Math.cos(theta);
   if (arg > 1) arg = 1; if (arg < -1) arg = -1;
   const phi2 = Math.asin(arg);
-  
   let lambda2 = lambda1 + Math.atan2(Math.sin(theta)*Math.sin(delta)*Math.cos(phi1), Math.cos(delta)-Math.sin(phi1)*Math.sin(phi2));
   let lng = toDeg(lambda2);
   lng = ((lng + 540) % 360) - 180; 
@@ -147,6 +148,12 @@ const App = () => {
   const [distance, setDistance] = useState(null);
   const [draggedCountryName, setDraggedCountryName] = useState(null);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+
+  // ESTADOS NUEVOS PARA MARCADORES
+  const [markers, setMarkers] = useState([]);
+  const [markerType, setMarkerType] = useState('city');
+  const [pendingMarker, setPendingMarker] = useState(null);
+  const [markerNameInput, setMarkerNameInput] = useState('');
 
   const modeRef = useRef(mode);
   const measurePointsRef = useRef(measurePoints);
@@ -278,7 +285,22 @@ const App = () => {
           .labelDotRadius(0.5)
           .labelDotOrientation(() => 'bottom')
           .labelColor(() => 'white')
-          .labelText(() => '');
+          .labelText(() => '')
+          .htmlElementsData(markers)
+          .htmlElement(d => {
+              const el = document.createElement('div');
+              el.innerHTML = `
+                  <div class="flex flex-col items-center pointer-events-none group">
+                      <div class="p-1 bg-slate-900/90 border border-white/20 rounded shadow-lg transition-transform group-hover:scale-125">
+                          ${d.type === 'city' ? '📍' : d.type === 'monument' ? '🏛️' : '⭐'}
+                      </div>
+                      <span class="mt-1 px-1.5 py-0.5 bg-black/70 text-[9px] text-white font-bold rounded border border-white/10 uppercase whitespace-nowrap">
+                          ${d.label}
+                      </span>
+                  </div>
+              `;
+              return el;
+          });
 
         setTimeout(() => {
           if (!globeInstance.current) return; 
@@ -341,6 +363,8 @@ const App = () => {
               }
             }
             setMeasurePoints(newPoints);
+          } else if (modeRef.current === 'addMarker' && coords) {
+              setPendingMarker(coords);
           } else if (modeRef.current === 'compare' && isPolygonClick) {
              const feature = event_or_polygon;
              const centroid = getCentroid(feature);
@@ -405,24 +429,17 @@ const App = () => {
   useEffect(() => {
       const container = globeContainerRef.current;
       if (!container) return;
-
       let animationFrameId;
-
       const handleMouseMove = (e) => {
           if (modeRef.current === 'compare' && compareDataRef.current && globeInstance.current) {
               if (animationFrameId) cancelAnimationFrame(animationFrameId);
-              
               animationFrameId = requestAnimationFrame(() => {
                   const rect = container.getBoundingClientRect();
                   const coords = globeInstance.current.toGlobeCoords(e.clientX - rect.left, e.clientY - rect.top);
-                  
-                  if (coords) {
-                      updateDraggedFeature(coords.lat, coords.lng);
-                  }
+                  if (coords) updateDraggedFeature(coords.lat, coords.lng);
               });
           }
       };
-
       container.addEventListener('mousemove', handleMouseMove);
       return () => {
           container.removeEventListener('mousemove', handleMouseMove);
@@ -447,12 +464,7 @@ const App = () => {
   useEffect(() => {
     if (globeInstance.current && !isEngineLoading) {
       if (measurePoints.length === 2) {
-        const arcData = [{
-          startLat: measurePoints[0].lat,
-          startLng: measurePoints[0].lng,
-          endLat: measurePoints[1].lat,
-          endLng: measurePoints[1].lng
-        }];
+        const arcData = [{ startLat: measurePoints[0].lat, startLng: measurePoints[0].lng, endLat: measurePoints[1].lat, endLng: measurePoints[1].lng }];
         globeInstance.current.arcsData(arcData);
       } else {
         globeInstance.current.arcsData([]);
@@ -461,165 +473,86 @@ const App = () => {
     }
   }, [measurePoints, isEngineLoading]);
 
+  // Actualizar marcadores en el globo
   useEffect(() => {
-    if (globeInstance.current && !isEngineLoading) {
-      globeInstance.current.polygonStrokeColor(globeInstance.current.polygonStrokeColor());
-    }
-  }, [mode, isEngineLoading]);
+    if (globeInstance.current) globeInstance.current.htmlElementsData(markers);
+  }, [markers]);
 
-  useEffect(() => {
-    if (globeInstance.current) {
-      const width = windowWidth >= 768 ? windowWidth - 320 : windowWidth;
-      const height = globeContainerRef.current?.clientHeight || window.innerHeight;
-      globeInstance.current.width(width);
-      globeInstance.current.height(height);
-    }
-  }, [windowWidth]);
+  const saveMarker = () => {
+      if (markerNameInput.trim() && pendingMarker) {
+          setMarkers([...markers, { ...pendingMarker, label: markerNameInput, type: markerType }]);
+          setPendingMarker(null);
+          setMarkerNameInput('');
+      }
+  };
 
   return (
     <div className="flex flex-col md:flex-row h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden selection:bg-blue-500/30">
       
-      <aside className="w-full md:w-80 bg-slate-900 border-r border-slate-800 p-5 flex flex-col z-10 shadow-2xl overflow-y-auto">
+      <aside className="w-full md:w-80 bg-slate-900 border-r border-slate-800 p-5 flex flex-col z-10 shadow-2xl overflow-y-auto custom-scrollbar">
         <header className="mb-6 flex-shrink-0">
           <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-orange-400 to-fuchsia-400 flex items-center gap-2">
             <Globe2 className="w-6 h-6 text-orange-400" />
-            Atlas Físico-Político
+            Atlas Interactivo
           </h1>
           <p className="text-xs text-slate-500 mt-2 uppercase tracking-wider font-semibold">
-            Vectores Activos / Fronteras Neón
+            By KnightRlex
           </p>
         </header>
 
         <div className="space-y-3 mb-6 flex-shrink-0">
-          <button 
-            onClick={() => { setMode('explore'); if(globeInstance.current) globeInstance.current.controls().autoRotate = false; }}
-            className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${mode === 'explore' ? 'bg-orange-900/30 border-orange-500 text-orange-400' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}`}
-          >
+          <button onClick={() => setMode('explore')} className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${mode === 'explore' ? 'bg-orange-900/30 border-orange-500 text-orange-400' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}`}>
             <Crosshair className="w-5 h-5" />
-            <div className="text-left">
-              <div className="font-medium">Exploración Táctica</div>
-              <div className="text-xs opacity-70">Líneas Neón y Vectores</div>
-            </div>
+            <div className="text-left"><div className="font-medium text-xs uppercase tracking-widest">Exploración Táctica</div></div>
           </button>
 
-          <button 
-            onClick={() => { setMode('measure'); setMeasurePoints([]); setDistance(null); if(globeInstance.current) globeInstance.current.controls().autoRotate = false; }}
-            className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${mode === 'measure' ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}`}
-          >
+          <button onClick={() => { setMode('measure'); setMeasurePoints([]); setDistance(null); }} className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${mode === 'measure' ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}`}>
             <Ruler className="w-5 h-5" />
-            <div className="text-left">
-              <div className="font-medium">Regla Geométrica</div>
-              <div className="text-xs opacity-70">Medir distancias reales</div>
-            </div>
+            <div className="text-left"><div className="font-medium text-xs uppercase tracking-widest">Regla Geométrica</div></div>
           </button>
 
-          <button 
-            onClick={() => { setMode('compare'); setMeasurePoints([]); setDistance(null); if(globeInstance.current) globeInstance.current.controls().autoRotate = false; }}
-            className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${mode === 'compare' ? 'bg-fuchsia-600/20 border-fuchsia-500 text-fuchsia-300' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}`}
-          >
+          <button onClick={() => setMode('compare')} className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${mode === 'compare' ? 'bg-fuchsia-600/20 border-fuchsia-500 text-fuchsia-300' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}`}>
             <Copy className="w-5 h-5" />
-            <div className="text-left">
-              <div className="font-medium">Comparación Territorial</div>
-              <div className="text-xs opacity-70">Extraer y comparar tamaños</div>
-            </div>
+            <div className="text-left"><div className="font-medium text-xs uppercase tracking-widest">Comparación Territorial</div></div>
           </button>
-        </div>
 
-        <div className="mb-6 flex-shrink-0">
-          {mode === 'explore' ? (
-            <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50 min-h-[140px]">
-              <h3 className="flex items-center gap-2 font-medium text-slate-300 mb-3 border-b border-slate-700 pb-2">
-                <Mountain className="w-4 h-4 text-orange-400" /> Relieve y Datos
-              </h3>
-              {vectorsLoading && !hoverD ? (
-                 <div className="flex items-center gap-2 text-sm text-orange-400 animate-pulse">
-                   <Loader2 className="w-4 h-4 animate-spin" /> Descargando vectores...
-                 </div>
-              ) : hoverD ? (
-                <div className="space-y-2 animate-in fade-in duration-300">
-                  <div className="text-xl font-bold text-white leading-tight">
-                    {hoverD?.properties?.name || hoverD?.properties?.NAME || hoverD?.properties?.ADMIN || 'Región Desconocida'}
-                  </div>
-                  
-                  {hoverD?.properties?.featurecla === 'Lake' ? (
-                     <div className="text-xs text-cyan-400 bg-cyan-950/40 p-1.5 rounded inline-block border border-cyan-900/50">
-                        Cuerpo de Agua / Lago Vectorial
-                     </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-sm text-slate-400">
-                      <span className="px-2 py-0.5 bg-slate-700 rounded-full text-xs">{hoverD?.properties?.CONTINENT || 'Tierra'}</span>
-                    </div>
-                  )}
-
-                  {checkDisputedStatus(hoverD) && (
-                    <div className="text-xs text-fuchsia-300 bg-fuchsia-900/20 border border-fuchsia-500/30 p-2 rounded flex gap-2 items-start mt-2">
-                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                      <span>{hoverD?.properties?.NOTE || "Territorio con estatus político especial o en disputa."}</span>
-                    </div>
-                  )}
+          {/* OPCIÓN NUEVA: MARCADORES */}
+          <div className={`p-3 rounded-xl border transition-all ${mode === 'addMarker' ? 'bg-blue-950/40 border-blue-500' : 'bg-slate-800/50 border-slate-700'}`}>
+            <button onClick={() => setMode('addMarker')} className={`w-full flex items-center gap-3 text-xs font-bold uppercase tracking-widest ${mode === 'addMarker' ? 'text-blue-400' : 'text-slate-400'}`}>
+              <PlusCircle className="w-5 h-5" /> Marcadores
+            </button>
+            {mode === 'addMarker' && (
+                <div className="flex gap-2 mt-4 justify-between">
+                    <button onClick={() => setMarkerType('city')} className={`flex-1 p-2 rounded-lg border flex flex-col items-center transition-colors ${markerType === 'city' ? 'bg-blue-600 border-blue-400 text-white' : 'bg-slate-900 border-slate-700 text-slate-500'}`}>
+                        <MapPin className="w-4 h-4 mb-1" /> <span className="text-[8px] font-bold tracking-tighter">CIUDAD</span>
+                    </button>
+                    <button onClick={() => setMarkerType('monument')} className={`flex-1 p-2 rounded-lg border flex flex-col items-center transition-colors ${markerType === 'monument' ? 'bg-blue-600 border-blue-400 text-white' : 'bg-slate-900 border-slate-700 text-slate-500'}`}>
+                        <Building2 className="w-4 h-4 mb-1" /> <span className="text-[8px] font-bold tracking-tighter">HITO</span>
+                    </button>
+                    <button onClick={() => setMarkerType('info')} className={`flex-1 p-2 rounded-lg border flex flex-col items-center transition-colors ${markerType === 'info' ? 'bg-blue-600 border-blue-400 text-white' : 'bg-slate-900 border-slate-700 text-slate-500'}`}>
+                        <Star className="w-4 h-4 mb-1" /> <span className="text-[8px] font-bold tracking-tighter">NOTA</span>
+                    </button>
                 </div>
-              ) : (
-                <p className="text-sm text-slate-500">Apunta con el ratón a un país. Al hacer zoom, los cuerpos de agua mantienen bordes vectoriales perfectos.</p>
-              )}
-            </div>
-          ) : mode === 'measure' ? (
-            <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50 min-h-[140px]">
-              <h3 className="flex items-center gap-2 font-medium text-slate-300 mb-3 border-b border-slate-700 pb-2">
-                <MapPin className="w-4 h-4 text-emerald-400" /> Calculadora
-              </h3>
-              {distance ? (
-                <div className="p-3 bg-slate-900 border border-emerald-500/30 rounded-lg text-center animate-in zoom-in duration-300">
-                  <div className="text-xs text-slate-400 uppercase tracking-widest mb-1">Distancia Directa</div>
-                  <div className="text-2xl font-bold text-emerald-400">{Number(distance).toLocaleString()} <span className="text-base">km</span></div>
-                  <button onClick={() => { setMeasurePoints([]); setDistance(null); }} className="mt-3 w-full flex items-center justify-center gap-2 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs text-slate-300 transition-colors">
-                    <Eraser className="w-3 h-3" /> Reiniciar
-                  </button>
-                </div>
-              ) : (
-                <p className="text-sm text-slate-500">Haz clic en un punto (país u océano) y luego en otro para trazar un arco sobre la esfera.</p>
-              )}
-            </div>
-          ) : (
-            <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50 min-h-[140px]">
-              <h3 className="flex items-center gap-2 font-medium text-slate-300 mb-3 border-b border-slate-700 pb-2">
-                <Copy className="w-4 h-4 text-fuchsia-400" /> Comparación Real
-              </h3>
-              {draggedCountryName ? (
-                <div className="p-3 bg-slate-900 border border-fuchsia-500/50 rounded-lg animate-in zoom-in duration-300">
-                  <div className="text-xs text-slate-400 uppercase tracking-widest mb-1">Clon Activo</div>
-                  <div className="text-lg font-bold text-fuchsia-400">{draggedCountryName}</div>
-                  <p className="text-xs text-slate-500 mt-2">Mueve el ratón o arrastra el globo para comparar su tamaño. Clic derecho para soltar.</p>
-                </div>
-              ) : (
-                <p className="text-sm text-slate-500">Haz clic en un país para extraer una copia de su silueta (borde fucsia). Luego deslízalo para compararlo.</p>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-col flex-shrink-0 min-h-[250px] bg-fuchsia-950/10 rounded-xl border border-fuchsia-900/30 overflow-hidden mb-6">
-          <div className="p-3 bg-fuchsia-900/30 border-b border-fuchsia-900/40 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-fuchsia-400" />
-            <h3 className="font-medium text-fuchsia-200 text-sm">Zonas Neón Fucsia</h3>
-          </div>
-          <div className="p-3 overflow-y-auto space-y-2 text-xs custom-scrollbar">
-            {vectorsLoading ? (
-              <p className="text-fuchsia-700 text-center italic py-4 flex items-center justify-center gap-2">
-                <Loader2 className="w-3 h-3 animate-spin" /> Analizando fronteras...
-              </p>
-            ) : disputedAreas.length > 0 ? (
-              disputedAreas.map((area, idx) => (
-                <div key={idx} className="pb-2 border-b border-fuchsia-900/20 last:border-0 last:pb-0">
-                  <span className="font-semibold text-fuchsia-300 block">{area.properties.NAME || area.properties.ADMIN}</span>
-                  <span className="text-fuchsia-500/80 leading-tight block mt-0.5">{area.properties.NOTE || area.properties.TYPE}</span>
-                </div>
-              ))
-            ) : (
-               <p className="text-fuchsia-700 text-center italic py-4">Sin zonas identificadas</p>
             )}
           </div>
         </div>
 
+        <div className="flex-1 flex flex-col min-h-[250px] bg-black/30 rounded-xl border border-slate-800 overflow-hidden mb-6">
+          <div className="p-3 bg-slate-800/40 border-b border-slate-800 flex justify-between items-center">
+             <span className="text-[9px] font-black uppercase text-slate-500 tracking-widest">Puntos en Sesión</span>
+             <button onClick={() => setMarkers([])} className="p-1 hover:text-red-400 text-slate-500 transition-colors" title="Borrar todo"><Trash2 className="w-3 h-3" /></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2 text-xs custom-scrollbar">
+            {markers.length === 0 ? (
+              <p className="text-slate-700 italic text-center py-4">Sin puntos marcados</p>
+            ) : markers.map((m, idx) => (
+                <div key={idx} className="flex items-center gap-2 p-2 bg-slate-800/20 rounded border border-slate-700/30">
+                    <span>{m.type === 'city' ? '📍' : m.type === 'monument' ? '🏛️' : '⭐'}</span>
+                    <span className="font-bold text-slate-300 truncate">{m.label}</span>
+                </div>
+            ))}
+          </div>
+        </div>
       </aside>
 
       <main className="flex-1 flex flex-col relative min-h-[500px] w-full">
@@ -627,19 +560,39 @@ const App = () => {
           {isEngineLoading && !engineError && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 z-20">
               <Loader2 className="w-10 h-10 text-orange-500 animate-spin mb-4" />
-              <p className="text-slate-400 font-medium tracking-wide">Iniciando motor geográfico...</p>
+              <p className="text-slate-400 font-medium tracking-wide uppercase text-xs">Iniciando motor...</p>
             </div>
           )}
           
-          {engineError && (
-             <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 z-20 text-center px-4">
-                <AlertTriangle className="w-12 h-12 text-red-500 mb-4" />
-                <p className="text-red-400 font-bold mb-2">Error de conexión al cargar librerías 3D.</p>
-                <p className="text-slate-400 text-sm">Los servidores CDN fueron bloqueados o hay un fallo de red.<br/>Por favor, recarga la página.</p>
-             </div>
-          )}
-
           <div ref={globeContainerRef} className="absolute inset-0 w-full h-full outline-none" />
+
+          {/* MODAL DE NOMBRE PARA MARCADORES */}
+          {pendingMarker && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                  <div className="bg-slate-900 border border-slate-700 p-6 rounded-2xl shadow-2xl w-80">
+                      <div className="flex justify-between items-center mb-4">
+                          <h3 className="font-black text-sm flex items-center gap-2 tracking-widest uppercase">
+                             {markerType === 'city' ? <MapPin className="text-blue-400 w-4 h-4" /> : markerType === 'monument' ? <Building2 className="text-blue-400 w-4 h-4" /> : <Star className="text-blue-400 w-4 h-4" />}
+                             Etiquetar Lugar
+                          </h3>
+                          <button onClick={() => setPendingMarker(null)}><X className="w-4 h-4 text-slate-500" /></button>
+                      </div>
+                      <input 
+                          autoFocus
+                          type="text" 
+                          value={markerNameInput}
+                          onChange={(e) => setMarkerNameInput(e.target.value)}
+                          placeholder="Nombre del lugar..."
+                          onKeyDown={(e) => e.key === 'Enter' && saveMarker()}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm outline-none focus:border-blue-500 transition-all mb-4 text-white"
+                      />
+                      <div className="flex gap-2">
+                          <button onClick={() => setPendingMarker(null)} className="flex-1 py-2 rounded-lg bg-slate-800 font-bold text-xs">CANCELAR</button>
+                          <button onClick={saveMarker} disabled={!markerNameInput.trim()} className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-black transition-all disabled:opacity-30">GUARDAR</button>
+                      </div>
+                  </div>
+              </div>
+          )}
           
           <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md px-4 py-2 rounded-full text-xs text-slate-300 pointer-events-none flex items-center gap-2 z-10 shadow-lg border border-slate-800">
             <Info className="w-4 h-4 text-orange-400" />
