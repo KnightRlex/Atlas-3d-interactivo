@@ -266,6 +266,18 @@ const App = () => {
             if (checkDisputedStatus(d)) return '#FF00FF'; 
             return modeRef.current === 'explore' ? '#FF5F1F' : 'rgba(255, 95, 31, 0.3)'; 
           })
+          // CORRECCIÓN 1: Etiquetas al pasar el mouse en Exploración Táctica
+          .polygonLabel(d => {
+            if (modeRef.current !== 'explore') return '';
+            const name = d.properties?.NAME || d.properties?.ADMIN || 'Desconocido';
+            const isDisputed = checkDisputedStatus(d);
+            const extraTag = isDisputed ? '<br/><span style="color: #FF00FF; font-size: 10px;">Zona en Disputa</span>' : '';
+            return `
+              <div style="background: rgba(15, 23, 42, 0.9); border: 1px solid ${isDisputed ? '#FF00FF' : 'rgba(255, 95, 31, 0.5)'}; padding: 6px 10px; border-radius: 6px; font-family: sans-serif; font-size: 12px; color: white;">
+                <b>${name}</b>${extraTag}
+              </div>
+            `;
+          })
           .pathPoints('points')
           .pathPointLat(p => p.lat)
           .pathPointLng(p => p.lng)
@@ -501,22 +513,56 @@ const App = () => {
         </header>
 
         <div className="space-y-3 mb-6 flex-shrink-0">
-          <button onClick={() => setMode('explore')} className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${mode === 'explore' ? 'bg-orange-900/30 border-orange-500 text-orange-400' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}`}>
-            <Crosshair className="w-5 h-5" />
-            <div className="text-left"><div className="font-medium text-xs uppercase tracking-widest">Exploración Táctica</div></div>
-          </button>
+          
+          {/* MODO EXPLORAR Y LISTA DE ZONAS (CORRECCIÓN 3) */}
+          <div className="flex flex-col gap-2">
+            <button onClick={() => setMode('explore')} className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${mode === 'explore' ? 'bg-orange-900/30 border-orange-500 text-orange-400' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}`}>
+              <Crosshair className="w-5 h-5" />
+              <div className="text-left"><div className="font-medium text-xs uppercase tracking-widest">Exploración Táctica</div></div>
+            </button>
+            {mode === 'explore' && disputedAreas.length > 0 && (
+               <div className="max-h-40 overflow-y-auto custom-scrollbar bg-slate-950/50 border border-fuchsia-500/30 rounded-xl p-3">
+                   <div className="text-[10px] text-fuchsia-400 font-bold mb-2 uppercase tracking-widest flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" /> Zonas en Disputa ({disputedAreas.length})
+                   </div>
+                   <div className="space-y-1">
+                       {disputedAreas.map((area, idx) => (
+                           <div key={idx} className="text-xs text-slate-300 truncate hover:text-fuchsia-300 transition-colors">
+                               • {area.properties?.NAME || area.properties?.ADMIN || 'Desconocida'}
+                           </div>
+                       ))}
+                   </div>
+               </div>
+            )}
+          </div>
 
-          <button onClick={() => { setMode('measure'); setMeasurePoints([]); setDistance(null); }} className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${mode === 'measure' ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}`}>
-            <Ruler className="w-5 h-5" />
-            <div className="text-left"><div className="font-medium text-xs uppercase tracking-widest">Regla Geométrica</div></div>
-          </button>
+          {/* MODO MEDIR Y RESULTADOS UI (CORRECCIÓN 2) */}
+          <div className="flex flex-col gap-2">
+            <button onClick={() => { setMode('measure'); setMeasurePoints([]); setDistance(null); }} className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${mode === 'measure' ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}`}>
+              <Ruler className="w-5 h-5" />
+              <div className="text-left"><div className="font-medium text-xs uppercase tracking-widest">Regla Geométrica</div></div>
+            </button>
+            {mode === 'measure' && (
+               <div className="p-3 bg-emerald-900/20 border border-emerald-500/30 rounded-xl text-center">
+                   {distance !== null ? (
+                       <div>
+                           <div className="text-[10px] text-emerald-400/70 uppercase tracking-widest mb-1">Distancia Calculada</div>
+                           <div className="text-xl font-black text-emerald-400">{distance} <span className="text-sm font-medium">km</span></div>
+                       </div>
+                   ) : measurePoints.length === 1 ? (
+                       <div className="text-xs text-emerald-300/70">Selecciona el segundo punto...</div>
+                   ) : (
+                       <div className="text-xs text-emerald-300/70">Selecciona origen y destino</div>
+                   )}
+               </div>
+            )}
+          </div>
 
           <button onClick={() => setMode('compare')} className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${mode === 'compare' ? 'bg-fuchsia-600/20 border-fuchsia-500 text-fuchsia-300' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}`}>
             <Copy className="w-5 h-5" />
             <div className="text-left"><div className="font-medium text-xs uppercase tracking-widest">Comparación Territorial</div></div>
           </button>
 
-          {/* OPCIÓN NUEVA: MARCADORES */}
           <div className={`p-3 rounded-xl border transition-all ${mode === 'addMarker' ? 'bg-blue-950/40 border-blue-500' : 'bg-slate-800/50 border-slate-700'}`}>
             <button onClick={() => setMode('addMarker')} className={`w-full flex items-center gap-3 text-xs font-bold uppercase tracking-widest ${mode === 'addMarker' ? 'text-blue-400' : 'text-slate-400'}`}>
               <PlusCircle className="w-5 h-5" /> Marcadores
@@ -537,14 +583,15 @@ const App = () => {
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col min-h-[250px] bg-black/30 rounded-xl border border-slate-800 overflow-hidden mb-6">
-          <div className="p-3 bg-slate-800/40 border-b border-slate-800 flex justify-between items-center">
+        {/* CONTENEDOR DE PUNTOS REDIMENSIONABLE (CORRECCIÓN 4) */}
+        <div className="flex flex-col max-h-[35vh] shrink-0 bg-black/30 rounded-xl border border-slate-800 overflow-hidden mb-6">
+          <div className="p-3 bg-slate-800/40 border-b border-slate-800 flex justify-between items-center shrink-0">
              <span className="text-[9px] font-black uppercase text-slate-500 tracking-widest">Puntos en Sesión</span>
              <button onClick={() => setMarkers([])} className="p-1 hover:text-red-400 text-slate-500 transition-colors" title="Borrar todo"><Trash2 className="w-3 h-3" /></button>
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2 text-xs custom-scrollbar">
             {markers.length === 0 ? (
-              <p className="text-slate-700 italic text-center py-4">Sin puntos marcados</p>
+              <p className="text-slate-700 italic text-center py-2">Sin puntos marcados</p>
             ) : markers.map((m, idx) => (
                 <div key={idx} className="flex items-center gap-2 p-2 bg-slate-800/20 rounded border border-slate-700/30">
                     <span>{m.type === 'city' ? '📍' : m.type === 'monument' ? '🏛️' : '⭐'}</span>
